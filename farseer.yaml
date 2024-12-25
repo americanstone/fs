@@ -1,21 +1,74 @@
 Database:
-  default: "DataType=mysql,PoolMaxSize=50,PoolMinSize=1,ConnectionString=root:steden@123@tcp(192.168.1.8:3306)/fss_demo?charset=utf8&parseTime=True&loc=Local"
+  default: "DataType=mysql,PoolMaxSize=50,PoolMinSize=1,ConnectionString=root:steden@123@tcp(192.168.1.8:3306)/fSchedule_demo?charset=utf8&parseTime=True&loc=Local"
 Redis:
   default: "Server=192.168.1.8:6379,DB=15,Password=steden@123,ConnectTimeout=600000,SyncTimeout=10000,ResponseTimeout=10000"
-  #default: "Server=127.0.0.1:6379,DB=15,Password=,ConnectTimeout=600000,SyncTimeout=10000,ResponseTimeout=10000"
-FSS:
-  Server: "http://127.0.0.1:888"
-  ReservedTaskCount: 20
-  PullCount: 6
-  WorkCount: 20
+Rabbit:
+  Ex1: "Server=rabbit:5672,UserName=farseer,Password=farseer,Exchange=Ex1,RoutingKey=,Type=fanout,UseConfirm=false,AutoCreate=true"
+  Ex2: "Server=rabbit:5672,UserName=farseer,Password=farseer,Exchange=Ex2,RoutingKey=,Type=fanout,UseConfirm=false,AutoCreate=true"
+Etcd:
+  default: "Server=127.0.0.1:2379|127.0.0.1:2379,ConnectTimeout=5000"
+FSchedule:
+  Debug:
+    Enable: false   # 启用调试模式，启用后不会向调度中心注册任务
+    JobName1:       # 调试模式下，配置任务的数据
+      Key1: "value1"
+      Key2: "value2"
+    JobName2:
+      Key3: "value3"
+      Key4: "value4"
+  ClientIp: ""      # 调度中心访问本机的IP地址，默认情况下不需要填写
+  ClientPort: 8888  # 调度中心访问本机的端口地址，必须填写
+  Server:
+    Token: ""       # 与调度中心通信的Token（未实现）
+    Address:        # 调度中心服务端地址（支持多个）
+      - "http://127.0.0.1:8886"
+      - "http://127.0.0.1:8887"
 ElasticSearch:
   es: "Server=http://192.168.1.8:9200,Username=es,Password=123456,ReplicasCount=1,ShardsCount=1,RefreshInterval=5,IndexFormat=yyyy_MM"
-  LinkTrack: "Server=http://192.168.1.8:9200,Username=es,Password=123456"
+Fops:
+  Server: "https://fops.fsgit.com"
+LinkTrace:
+  Enable: false
+  PrintLog: true
 WebApi:
   Url: ":888"
+  Session:
+    Store: "Redis"
+    StoreConfigName: "default"
+    Age: 1800
+  Jwt:
+    Key: "your token key"             # 生成token的秘钥
+    KeyType: "HS384"                  # 支持 HS256/HS384/HS512，RS256/RS384/RS512，ES256/ES384/ES512，PS256/PS384/PS512，EdDSA
+    HeaderName: "Authorization"       # 前端提交Token，存放到header的name
+    InvalidStatusCode: 403            # token无效时的状态码
+    InvalidMessage: "您没有权限访问"     # token无效时的提示信息
 Log:
-  LogLevel: "Information"
+  Default:
+    LogLevel: "info"                  # 只记录级别>=info的日志内容
+    Format: "json"                    # 默认使用json格式输出
+    TimeFormat: "yyyy-MM-dd hh:mm:ss" # 打印的时间格式，默认为：yyyy-MM-dd hh:mm:ss.ffffff
+  Console:
+    LogLevel: "info"                  # 只记录级别>=info的日志内容
+    Format: "text"                    # 控制台打印，使用text格式输出
+    TimeFormat: "yyyy-MM-dd hh:mm:ss" # 打印的时间格式，默认为：yyyy-MM-dd hh:mm:ss.ffffff
+    Disable: false
+  File:
+    LogLevel: "info"                  # 只记录级别>=info的日志内容
+    Format: "text"                    # 使用text格式写入日志文件
+    TimeFormat: "yyyy-MM-dd hh:mm:ss" # 打印的时间格式，默认为：yyyy-MM-dd hh:mm:ss.ffffff
+    Path: "./log"                     # 日志文件存储在应用程序的./log目录中
+    RollingInterval: "Hour"           # 滚动间隔（Hour|Day|Week|Month|Year）
+    FileSizeLimitMb: 1                # 文件大小限制
+    FileCountLimit: 20                # 文件数量限制
+    RefreshInterval: 1                # 写入到文件的时间间隔，秒单位，最少为1
+    Disable: true
+  Fops:
+    Disable: false
   Component:
-    httpInvoke: true
-    task: true
-    cacheManage: true
+    task: true                # 打印task组件的日志
+    cacheManage: true         # 打印cacheManage组件的日志
+    webapi: true              # 打印webapi组件的日志
+    event: true               # 打印event组件的日志
+    httpRequest: true         # 打印httpRequest组件的日志
+    queue: true               # 打印queue组件的日志
+    fSchedule: true           # 打印fSchedule组件的日志
