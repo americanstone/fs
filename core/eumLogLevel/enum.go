@@ -1,5 +1,11 @@
 package eumLogLevel
 
+import (
+	"strings"
+
+	"github.com/farseer-go/fs/snc"
+)
+
 // Enum 日志等级
 type Enum int
 
@@ -13,27 +19,27 @@ const (
 	NoneLevel
 )
 
-func (r Enum) ToString() string {
-	switch r {
-	case Trace:
-		return "Trace"
-	case Debug:
-		return "Debug"
-	case Information:
-		return "Info"
-	case Warning:
-		return "Warn"
-	case Error:
-		return "Error"
-	case Critical:
-		return "Critical"
+// GetEnum 名称转枚举
+func GetEnum(name string) Enum {
+	switch strings.ToLower(name) {
+	case "trace":
+		return Trace
+	case "debug":
+		return Debug
+	case "information", "info":
+		return Information
+	case "warning", "warn":
+		return Warning
+	case "error":
+		return Error
+	case "critical":
+		return Critical
 	}
-	return "Info"
+	return NoneLevel
 }
 
-// GetName 获取标签名称
-func GetName(eum Enum) string {
-	switch eum {
+func (receiver Enum) ToString() string {
+	switch receiver {
 	case Trace:
 		return "Trace"
 	case Debug:
@@ -46,6 +52,21 @@ func GetName(eum Enum) string {
 		return "Error"
 	case Critical:
 		return "Critical"
+	default:
+		return "None"
 	}
-	return "Info"
+}
+
+// MarshalJSON to output non base64 encoded []byte
+// 此处不能用指针，否则json序列化时不执行
+func (receiver Enum) MarshalJSON() ([]byte, error) {
+	return snc.Marshal(receiver.ToString())
+}
+
+// UnmarshalJSON to deserialize []byte
+func (receiver *Enum) UnmarshalJSON(b []byte) error {
+	var numStr string
+	err := snc.Unmarshal(b, &numStr)
+	*receiver = GetEnum(numStr)
+	return err
 }

@@ -5,9 +5,6 @@ import "reflect"
 // IsEqual 比较两个值是否相等
 func IsEqual[TValue any](val1, val2 TValue) bool {
 	valType := reflect.TypeOf(val1)
-	if valType.Kind() == reflect.Ptr {
-		valType = valType.Elem()
-	}
 	switch valType.Kind() {
 	case reflect.String:
 		return any(val1).(string) == any(val2).(string)
@@ -37,6 +34,7 @@ func IsEqual[TValue any](val1, val2 TValue) bool {
 		return any(val1).(float64) == any(val2).(float64)
 	case reflect.Float32:
 		return any(val1).(float32) == any(val2).(float32)
+	default:
+		return false
 	}
-	return false
 }

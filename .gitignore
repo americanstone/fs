@@ -16,3 +16,6 @@
 .idea/*
 go.sum
 go.work.sum
+go.work
+/test/log/
+*.DS_Store
