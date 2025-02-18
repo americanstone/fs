@@ -5,55 +5,55 @@ import (
 	"strconv"
 )
 
-func stringToNumber(source string, defVal any, returnKind reflect.Kind) any {
-	if returnKind == reflect.Int8 || returnKind == reflect.Int16 || returnKind == reflect.Int32 || returnKind == reflect.Int || returnKind == reflect.Int64 {
-		result, err := strconv.ParseInt(source, 10, 64)
-		if err != nil {
-			return defVal
+func StringToNumber(source string, defVal any, defValKind reflect.Kind) any {
+	switch defValKind {
+	case reflect.Float32:
+		if result, err := strconv.ParseFloat(source, 64); err == nil {
+			return float32(result)
 		}
-		switch returnKind {
-		case reflect.Int8:
-			return int8(result)
-		case reflect.Int16:
-			return int16(result)
-		case reflect.Int32:
-			return int32(result)
-		case reflect.Int64:
+	case reflect.Float64:
+		if result, err := strconv.ParseFloat(source, 64); err == nil {
 			return result
-		case reflect.Int:
-			return int(result)
 		}
-	}
-
-	if returnKind == reflect.Uint8 || returnKind == reflect.Uint16 || returnKind == reflect.Uint32 || returnKind == reflect.Uint || returnKind == reflect.Uint64 {
-		result, err := strconv.ParseUint(source, 10, 64)
-		if err != nil {
-			return defVal
-		}
-		switch returnKind {
-		case reflect.Uint8:
+	case reflect.Uint8:
+		if result, err := strconv.ParseUint(source, 10, 64); err == nil {
 			return uint8(result)
-		case reflect.Uint16:
+		}
+	case reflect.Uint16:
+		if result, err := strconv.ParseUint(source, 10, 64); err == nil {
 			return uint16(result)
-		case reflect.Uint32:
+		}
+	case reflect.Uint32:
+		if result, err := strconv.ParseUint(source, 10, 64); err == nil {
 			return uint32(result)
-		case reflect.Uint64:
+		}
+	case reflect.Uint64:
+		if result, err := strconv.ParseUint(source, 10, 64); err == nil {
 			return result
-		case reflect.Uint:
+		}
+	case reflect.Uint:
+		if result, err := strconv.ParseUint(source, 10, 64); err == nil {
 			return uint(result)
 		}
-	}
-
-	if returnKind == reflect.Float32 || returnKind == reflect.Float64 {
-		result, err := strconv.ParseFloat(source, 64)
-		if err != nil {
-			return defVal
+	case reflect.Int8:
+		if result, err := strconv.ParseInt(source, 10, 64); err == nil {
+			return int8(result)
 		}
-		switch returnKind {
-		case reflect.Float32:
-			return float32(result)
-		case reflect.Float64:
+	case reflect.Int16:
+		if result, err := strconv.ParseInt(source, 10, 64); err == nil {
+			return int16(result)
+		}
+	case reflect.Int32:
+		if result, err := strconv.ParseInt(source, 10, 64); err == nil {
+			return int32(result)
+		}
+	case reflect.Int64:
+		if result, err := strconv.ParseInt(source, 10, 64); err == nil {
 			return result
+		}
+	case reflect.Int:
+		if result, err := strconv.ParseInt(source, 10, 64); err == nil {
+			return int(result)
 		}
 	}
 	return defVal

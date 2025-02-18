@@ -1,10 +1,14 @@
 package configure
 
 import (
+	"github.com/farseer-go/fs/parse"
 	"strings"
 )
 
-var configurationBuilder config
+var configurationBuilder = newConfigurationBuilder()
+
+// yml提供者
+var ymlProvider *yamlConfig
 
 type config struct {
 	def            map[string]any    // 默认配置
@@ -12,7 +16,7 @@ type config struct {
 	configProvider []IConfigProvider // 配置提供者
 }
 
-func NewConfigurationBuilder() config {
+func newConfigurationBuilder() config {
 	return config{
 		def:            make(map[string]any),
 		configProvider: []IConfigProvider{},
@@ -21,14 +25,13 @@ func NewConfigurationBuilder() config {
 
 // AddYamlFile 设置yaml文件配置
 func (c *config) AddYamlFile(configFile string) {
-	var yConfig IConfigProvider = NewYamlConfig(configFile)
-	c.configProvider = append(c.configProvider, yConfig)
+	ymlProvider = NewYamlConfig(configFile)
+	c.configProvider = append(c.configProvider, ymlProvider)
 }
 
 // AddEnvironmentVariables 加载环境变量
 func (c *config) AddEnvironmentVariables() {
-	var envConfig IConfigProvider = NewEnvConfig()
-	c.configProvider = append([]IConfigProvider{envConfig}, c.configProvider...)
+	c.configProvider = append([]IConfigProvider{NewEnvConfig()}, c.configProvider...)
 }
 
 // SetEnvKeyReplacer 环境变量替换
@@ -47,12 +50,12 @@ func (c *config) Build() error {
 	return nil
 }
 
-// GetString 读取配置
-func (c *config) GetString(key string) string {
+// Get 获取配置
+func (c *config) Get(key string) any {
 	// 遍历配置提供者
 	for _, provider := range c.configProvider {
-		v := provider.GetString(key)
-		if v != "" {
+		v, exists := provider.Get(key)
+		if exists {
 			return v
 		}
 	}
@@ -60,42 +63,93 @@ func (c *config) GetString(key string) string {
 	// 是否有默认配置
 	val, exists := c.def[key]
 	if exists {
-		return val.(string)
+		return val
 	}
 
-	return ""
+	return nil
 }
 
 // GetSubNodes 获取所有子节点
 func (c *config) GetSubNodes(key string) map[string]any {
-	// 遍历配置提供者
-	for _, provider := range c.configProvider {
-		v, exists := provider.Get(key)
-		if exists {
-			m, isOk := v.(map[string]any)
-			if isOk {
-				return m
+	m := make(map[string]any)
+	// 先加载默认值
+	prefixKey := key + "."
+	for k, v := range c.def {
+		if strings.HasPrefix(k, prefixKey) {
+			m[k[len(prefixKey):]] = v
+		}
+	}
+
+	// 这里需要倒序获取列表，利用后面覆盖前面的方式来获取
+	// 再添加yaml、环境变量
+	for i := len(c.configProvider) - 1; i >= 0; i-- {
+		if subMap, exists := c.configProvider[i].GetSubNodes(key); exists {
+			for k, v := range subMap {
+				// 尝试从之前的map中找到key（忽略大小写）
+				// 目的是以yaml的key为准
+				if c.configProvider[i].Name() == "env" {
+					k = lookupMapKeyIgnoreCase(m, k)
+				}
+				m[k] = v
 			}
 		}
 	}
-	return make(map[string]any)
+
+	return m
 }
 
 // GetSlice 获取数组
 func (c *config) GetSlice(key string) []string {
+	var result []string
+	// 先加载默认值
+	if defVal, exists := c.def[key]; exists {
+		switch defArr := defVal.(type) {
+		case []string:
+			result = defArr
+		}
+	}
+
+	// 这里需要倒序获取列表，利用后面覆盖前面的方式来获取
+	// 再添加yaml、环境变量
+	for i := len(c.configProvider) - 1; i >= 0; i-- {
+		if arrVal, exists := c.configProvider[i].GetArray(key); exists {
+			for arrIndex, val := range arrVal {
+				for len(result) <= arrIndex {
+					result = append(result, "")
+				}
+				result[arrIndex] = parse.ToString(val)
+			}
+		}
+	}
+	return result
+}
+
+// GetSliceNodes 获取数组节点
+func (c *config) GetSliceNodes(key string) []map[string]any {
 	// 遍历配置提供者
 	for _, provider := range c.configProvider {
 		v, exists := provider.Get(key)
 		if exists {
-			m, isOk := v.([]any)
+			arr, isOk := v.([]any)
 			if isOk {
-				var arr []string
-				for _, s := range m {
-					arr = append(arr, s.(string))
+				var sliceNodes []map[string]any
+				for _, node := range arr {
+					sliceNodes = append(sliceNodes, node.(map[string]any))
 				}
-				return arr
+				return sliceNodes
 			}
 		}
 	}
-	return []string{}
+	return []map[string]any{}
+}
+
+// 尝试从之前的map中找到key（忽略大小写）
+// 目的是以yaml的key为准
+func lookupMapKeyIgnoreCase(m map[string]any, key string) string {
+	for k, _ := range m {
+		if strings.EqualFold(k, key) {
+			return k
+		}
+	}
+	return key
 }

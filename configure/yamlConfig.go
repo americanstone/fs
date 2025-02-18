@@ -2,9 +2,9 @@ package configure
 
 import (
 	"fmt"
-	"github.com/farseer-go/fs/parse"
-	"gopkg.in/yaml.v3"
 	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
 type yamlConfig struct {
@@ -18,14 +18,22 @@ func NewYamlConfig(configFile string) *yamlConfig {
 		configFile: configFile,
 	}
 }
+func (r *yamlConfig) Name() string {
+	return "yaml"
+}
 
 func (r *yamlConfig) LoadConfigure() error {
 	data, err := os.ReadFile(r.configFile)
 	if err != nil {
 		return err
 	}
+	return r.LoadContent(data)
+}
+
+// LoadContent 解析yml内容
+func (r *yamlConfig) LoadContent(data []byte) error {
 	var m map[string]any
-	err = yaml.Unmarshal(data, &m)
+	err := yaml.Unmarshal(data, &m)
 	if err != nil {
 		return err
 	}
@@ -35,25 +43,40 @@ func (r *yamlConfig) LoadConfigure() error {
 	return nil
 }
 
-func (r *yamlConfig) GetString(key string) string {
+func (r *yamlConfig) Get(key string) (any, bool) {
 	v, exists := r.data[key]
 	if exists {
 		switch v.(type) {
 		case map[string]any:
 			data, err := yaml.Marshal(&v)
 			if err == nil {
-				return string(data)
+				return string(data), exists
 			}
-		default:
-			return parse.Convert(v, "")
 		}
 	}
-	return ""
+	return v, exists
 }
 
-func (r *yamlConfig) Get(key string) (any, bool) {
+func (r *yamlConfig) GetArray(key string) ([]any, bool) {
 	v, exists := r.data[key]
-	return v, exists
+	if exists {
+		switch arr := v.(type) {
+		case []any:
+			return arr, exists
+		}
+	}
+	return nil, exists
+}
+
+func (r *yamlConfig) GetSubNodes(key string) (map[string]any, bool) {
+	v, exists := r.data[key]
+	if exists {
+		switch m := v.(type) {
+		case map[string]any:
+			return m, exists
+		}
+	}
+	return nil, false
 }
 
 // 扁平化map
@@ -71,17 +94,14 @@ func (r *yamlConfig) flattening(keyPrefix string, m map[string]any) {
 
 // 扁平化any
 func (r *yamlConfig) flatteningAny(key string, v any) {
-	switch v.(type) {
+	switch subNode := v.(type) {
 	// 需要继续往里面遍历子节点map
 	case map[string]any:
-		subNode := v.(map[string]any)
 		r.data[key] = subNode
 		r.flattening(key, subNode)
 	// 需要继续往里面遍历子节点数组
 	case []any:
-		subNode := v.([]any)
 		r.data[key] = subNode
-
 		for subIndex := 0; subIndex < len(subNode); subIndex++ {
 			r.flatteningAny(key+fmt.Sprintf("[%d]", subIndex), subNode[subIndex])
 		}

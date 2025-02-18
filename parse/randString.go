@@ -3,13 +3,12 @@ package parse
 import (
 	"encoding/hex"
 	"math/rand"
+	"time"
 )
 
 // RandString 随机字符串
 func RandString(length int) string {
-	//rand.Seed(time.Now().UnixNano())
-	uLen := 6
-	b := make([]byte, uLen)
-	rand.Read(b)
-	return hex.EncodeToString(b)[0:uLen]
+	b := make([]byte, length)
+	rand.New(rand.NewSource(time.Now().UnixNano())).Read(b)
+	return hex.EncodeToString(b)[0:length]
 }

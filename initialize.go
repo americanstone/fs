@@ -1,110 +1,143 @@
 package fs
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/farseer-go/fs/configure"
+	"github.com/farseer-go/fs/container"
+	"github.com/farseer-go/fs/core"
 	"github.com/farseer-go/fs/dateTime"
 	"github.com/farseer-go/fs/flog"
 	"github.com/farseer-go/fs/modules"
 	"github.com/farseer-go/fs/net"
-	"github.com/farseer-go/fs/parse"
-	"github.com/farseer-go/fs/snowflake"
+	"github.com/farseer-go/fs/sonyflake"
 	"github.com/farseer-go/fs/stopwatch"
-	"math/rand"
-	"os"
-	"reflect"
-	"strconv"
-	"strings"
-	"time"
 )
 
-// StartupAt 应用启动时间
-var StartupAt dateTime.DateTime
+var (
+	Context        context.Context         // 最顶层的上下文
+	dependModules  []modules.FarseerModule // 依赖的模块
+	callbackFnList []callbackFn            // 回调函数列表
+	isInit         bool                    // 是否初始化完
+)
 
-// AppName 应用名称
-var AppName string
+type callbackFn struct {
+	f    func()
+	name string
+}
 
-// HostName 主机名称
-var HostName string
-
-// AppId 应用ID
-var AppId int64
-
-// AppIp 应用IP
-var AppIp string
-
-// ProcessId 进程Id
-var ProcessId int
-
-// 依赖的模块
-var dependModules []modules.FarseerModule
-
-var callbackFnList []func()
+var onceInit sync.Once
 
 // Initialize 初始化框架
 func Initialize[TModule modules.FarseerModule](appName string) {
 	sw := stopwatch.StartNew()
+	Context = context.Background()
+	onceInit.Do(func() {
+		//rand.New(rand.NewSource(time.Now().UnixNano()))
+		//rand.Seed(time.Now().UnixNano())
+		core.AppName = appName
+		core.ProcessId = os.Getppid()
+		core.HostName, _ = os.Hostname()
+		core.StartupAt = dateTime.Now()
+		core.AppId = sonyflake.GenerateId()
+		core.AppIp = net.GetIp()
+	})
 
-	AppName = appName
-	ProcessId = os.Getppid()
-	HostName, _ = os.Hostname()
-	rand.Seed(time.Now().UnixNano())
-	snowflake.Init(parse.HashCode64(HostName), rand.Int63n(32))
-	StartupAt = dateTime.Now()
-	AppId = snowflake.GenerateId()
-	AppIp = net.GetIp()
-
-	flog.Println("应用名称：", flog.Colors[2](AppName))
-	flog.Println("主机名称：", flog.Colors[2](HostName))
-	flog.Println("系统时间：", flog.Colors[2](StartupAt.ToString("yyyy-MM-dd hh:mm:ss")))
-	flog.Println("  进程ID：", flog.Colors[2](ProcessId))
-	flog.Println("  应用ID：", flog.Colors[2](AppId))
-	flog.Println("  应用IP：", flog.Colors[2](AppIp))
+	flog.LogBuffer <- fmt.Sprint("AppName： ", flog.Colors[2](core.AppName))
+	flog.LogBuffer <- fmt.Sprint("AppID：   ", flog.Colors[2](core.AppId))
+	flog.LogBuffer <- fmt.Sprint("AppIP：   ", flog.Colors[2](core.AppIp))
+	flog.LogBuffer <- fmt.Sprint("HostName：", flog.Colors[2](core.HostName))
+	flog.LogBuffer <- fmt.Sprint("HostTime：", flog.Colors[2](core.StartupAt.ToString("yyyy-MM-dd hh:mm:ss")))
+	flog.LogBuffer <- fmt.Sprint("PID：     ", flog.Colors[2](core.ProcessId))
 	showComponentLog()
-	flog.Println("---------------------------------------")
+	flog.LogBuffer <- fmt.Sprint("---------------------------------------")
 
+	// 加载模块依赖
 	var startupModule TModule
-	flog.Println("加载模块...")
-	dependModules = modules.Distinct(modules.GetDependModule(startupModule))
-	flog.Println("加载完毕，共加载 " + strconv.Itoa(len(dependModules)) + " 个模块")
-	flog.Println("---------------------------------------")
+	dependModules = modules.GetDependModules(startupModule)
+	flog.LogBuffer <- fmt.Sprint("Loaded, " + flog.Red(len(dependModules)) + " modules in total")
 
+	// 执行所有模块初始化
 	modules.StartModules(dependModules)
-	flog.Println("初始化完毕，共耗时：" + sw.GetMillisecondsText())
+	flog.CloseBuffer()
+	flog.Println("Initialization completed, total time：" + sw.GetMillisecondsText())
 	flog.Println("---------------------------------------")
 
+	if proxy := configure.GetString("Proxy"); proxy != "" {
+		flog.Println("http使用代理：", flog.Blue(proxy))
+	}
+
+	// 健康检查
+	healthChecks := container.ResolveAll[core.IHealthCheck]()
+	if len(healthChecks) > 0 {
+		flog.Println("Health Check...")
+		isSuccess := true
+		for _, healthCheck := range healthChecks {
+			item, err := healthCheck.Check()
+			if err == nil {
+				flog.Printf("%s%s\n", flog.Green("【✓】"), item)
+			} else {
+				flog.Printf("%s%s：%s\n", flog.Red("【✕】"), item, flog.Red(err.Error()))
+				isSuccess = false
+			}
+		}
+		if !isSuccess {
+			//os.Exit(-1)
+			panic("健康检查失败")
+		}
+	}
+
+	// 日志内容美化
+	if len(healthChecks) > 0 || configure.GetString("Fops.Server") != "" {
+		flog.Println("---------------------------------------")
+	}
+
+	isInit = true
+	// 加载callbackFnList，启动后才执行的模块
 	if len(callbackFnList) > 0 {
 		for index, fn := range callbackFnList {
 			sw.Restart()
-			fn()
-			flog.Println("运行" + strconv.Itoa(index+1) + "：" + reflect.TypeOf(fn).String() + "，共耗时：" + sw.GetMillisecondsText())
-			flog.Println("---------------------------------------")
+			fn.f()
+			flog.Println("Run " + strconv.Itoa(index+1) + "：" + fn.name + "，Use：" + sw.GetText())
 		}
+		flog.Println("---------------------------------------")
 	}
+
 }
 
 // 组件日志
 func showComponentLog() {
-	err := configure.ReadInConfig()
-	if err != nil { // 捕获读取中遇到的error
-		flog.Errorf("配置[farseer.yaml]读取时发生错误: %s \n", err)
-	} else {
-		logConfig := configure.GetSubNodes("Log.Component")
-		var logSets []string
-		for k, v := range logConfig {
-			if v == "true" {
-				logSets = append(logSets, k)
-			}
+	logConfig := configure.GetSubNodes("Log.Component")
+	var logSets []string
+	for k, v := range logConfig {
+		if v == true {
+			logSets = append(logSets, k)
 		}
-		flog.Println("日志开关：", flog.Colors[2](strings.Join(logSets, " ")))
+	}
+	if len(logSets) > 0 {
+		flog.LogBuffer <- fmt.Sprint("Log Switch：", flog.Colors[2](strings.Join(logSets, " ")))
 	}
 }
 
 // Exit 应用退出
-func Exit() {
+func Exit(code int) {
 	modules.ShutdownModules(dependModules)
+	os.Exit(code)
 }
 
 // AddInitCallback 添加框架启动完后执行的函数
-func AddInitCallback(fn func()) {
-	callbackFnList = append(callbackFnList, fn)
+func AddInitCallback(name string, fn func()) {
+	// 未初始化完时，加入到列表中
+	if !isInit {
+		callbackFnList = append(callbackFnList, callbackFn{name: name, f: fn})
+	} else { // 初始化完后，则立即执行
+		sw := stopwatch.StartNew()
+		fn()
+		flog.Println("Run ：" + name + "，Use：" + sw.GetMillisecondsText())
+	}
 }

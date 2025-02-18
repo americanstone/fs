@@ -1,10 +1,23 @@
 package modules
 
 import (
+	"fmt"
+	"reflect"
+
 	"github.com/farseer-go/fs/flog"
 	"github.com/farseer-go/fs/stopwatch"
-	"reflect"
 )
+
+func GetDependModules(startupModule FarseerModule) []FarseerModule {
+	dependModules := Distinct(GetDependModule(startupModule))
+
+	// 加载核心模块
+	if !exists(dependModules, FarseerKernelModule{}) {
+		return append([]FarseerModule{FarseerKernelModule{}}, dependModules...)
+	}
+
+	return dependModules
+}
 
 // GetDependModule 查找模块的依赖
 func GetDependModule(module ...FarseerModule) []FarseerModule {
@@ -15,8 +28,12 @@ func GetDependModule(module ...FarseerModule) []FarseerModule {
 			modules = append(modules, GetDependModule(dependsModules...)...)
 		}
 
-		flog.Println("加载模块：" + flog.Colors[5](reflect.TypeOf(farseerModule).String()) + "")
+		moduleName := reflect.TypeOf(farseerModule).String()
+		flog.LogBuffer <- fmt.Sprint("Loading Module：" + flog.Colors[5](moduleName) + "")
 		modules = append(modules, farseerModule)
+		moduleMapLocker.Lock()
+		moduleMap[moduleName] = 0
+		moduleMapLocker.Unlock()
 	}
 	return modules
 }
@@ -29,13 +46,13 @@ func Distinct(modules []FarseerModule) []FarseerModule {
 			lst = append(lst, module)
 		}
 	}
-	return append([]FarseerModule{FarseerKernelModule{}}, lst...)
+	return lst
 }
 
 // 判断模块是否存在于数组中
 func exists(lst []FarseerModule, module FarseerModule) bool {
-	for _, farseerModule := range lst {
-		if farseerModule == module {
+	for i := 0; i < len(lst); i++ {
+		if reflect.ValueOf(lst[i]).String() == reflect.ValueOf(module).String() {
 			return true
 		}
 	}
@@ -44,42 +61,46 @@ func exists(lst []FarseerModule, module FarseerModule) bool {
 
 // StartModules 启动模块
 func StartModules(farseerModules []FarseerModule) {
-	flog.Println("Modules模块初始化...")
-	sw := stopwatch.StartNew()
 	for _, farseerModule := range farseerModules {
-		moduleName := reflect.TypeOf(farseerModule).String()
-		sw.Restart()
-		farseerModule.PreInitialize()
-		flog.Println("耗时：" + sw.GetMillisecondsText() + moduleName + ".PreInitialize()")
+		if module, ok := farseerModule.(FarseerPreInitializeModule); ok {
+			sw := stopwatch.StartNew()
+			moduleName := reflect.TypeOf(farseerModule).String()
+			module.PreInitialize()
+			flog.LogBuffer <- fmt.Sprint("Elapsed time：" + sw.GetText() + " " + moduleName + flog.Yellow(".PreInitialize()"))
+			moduleMap[moduleName] += sw.ElapsedDuration()
+		}
 	}
-	flog.Println("---------------------------------------")
 
 	for _, farseerModule := range farseerModules {
-		moduleName := reflect.TypeOf(farseerModule).String()
-		sw.Restart()
-		farseerModule.Initialize()
-		flog.Println("耗时：" + sw.GetMillisecondsText() + moduleName + ".Initialize()")
+		if module, ok := farseerModule.(FarseerInitializeModule); ok {
+			sw := stopwatch.StartNew()
+			moduleName := reflect.TypeOf(farseerModule).String()
+			module.Initialize()
+			flog.LogBuffer <- fmt.Sprint("Elapsed time：" + sw.GetText() + " " + moduleName + flog.Blue(".Initialize()"))
+			moduleMap[moduleName] += sw.ElapsedDuration()
+		}
 	}
-	flog.Println("---------------------------------------")
 
 	for _, farseerModule := range farseerModules {
-		moduleName := reflect.TypeOf(farseerModule).String()
-		sw.Restart()
-		farseerModule.PostInitialize()
-		flog.Println("耗时：" + sw.GetMillisecondsText() + moduleName + ".PostInitialize()")
-		moduleMap[moduleName] = sw.ElapsedMilliseconds()
+		if module, ok := farseerModule.(FarseerPostInitializeModule); ok {
+			sw := stopwatch.StartNew()
+			moduleName := reflect.TypeOf(farseerModule).String()
+			module.PostInitialize()
+			flog.LogBuffer <- fmt.Sprint("Elapsed time：" + sw.GetText() + " " + moduleName + flog.Green(".PostInitialize()"))
+			moduleMap[moduleName] += sw.ElapsedDuration()
+		}
 	}
-	flog.Println("基础组件初始化完成")
 }
 
 // ShutdownModules 关闭模块
 func ShutdownModules(farseerModules []FarseerModule) {
-	flog.Println("Modules模块关闭...")
-	sw := stopwatch.StartNew()
+	flog.Println("Modules close...")
 	for _, farseerModule := range farseerModules {
-		sw.Restart()
-		farseerModule.Shutdown()
-		flog.Println("耗时：" + sw.GetMillisecondsText() + reflect.TypeOf(farseerModule).String() + ".Shutdown()")
+		if module, ok := farseerModule.(FarseerShutdownModule); ok {
+			sw := stopwatch.StartNew()
+			moduleName := reflect.TypeOf(farseerModule).String()
+			module.Shutdown()
+			flog.Println("Elapsed time：" + sw.GetMillisecondsText() + " " + moduleName + flog.Red(".Shutdown()"))
+		}
 	}
-	flog.Println("---------------------------------------")
 }
